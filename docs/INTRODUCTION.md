@@ -6,6 +6,10 @@ DiDA (Discrete Diffusion Adaptation). It explains the problem DiDA solves, the
 lineage of ideas it builds on, the surrounding research landscape, and the
 honest limits of this educational implementation.
 
+![Concept figure: DiDA decoding — a fully masked grid of image tokens is refined through hybrid attention (bidirectional among noisy tokens, causal over the clean text prefix) and confidence-based parallel unmasking, repeating for a few steps to produce the final image tokens.](figures/concept_figure.svg)
+
+*Figure 1. The DiDA decoding loop: start from all-`[MASK]` image tokens, predict all positions in parallel under a hybrid attention mask, commit the highest-confidence tokens, re-mask the rest, and repeat a handful of times instead of decoding left to right.*
+
 ## 1. Why autoregressive decoding is slow for images
 
 The dominant recipe for tokenized image generation is autoregressive (AR)

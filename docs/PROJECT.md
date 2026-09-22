@@ -13,9 +13,9 @@ work in `CONTRIBUTING.md`. Sizes: `[XS]` ≈ an hour or two, `[S]` ≈ a day,
 |-------|-------|------|
 | #5 | Implement MaskGIT cosine + Fast-dLLM confidence-threshold remasking baselines behind one scheduler API | S |
 | #4 | Speed/quality benchmark harness: forward-pass count vs synthetic-task quality with seeds | S |
-| #7 | Synthetic text task suite with strong position dependencies (arithmetic carries, bracket matching) + data generators | S |
-| #13 | pyproject.toml packaging + pytest config cleanup | XS |
-| #17 | Example script: end-to-end image-token generation walkthrough with comments | XS |
+| #6 | Synthetic text task suite with strong position dependencies (arithmetic carries, bracket matching) + data generators | S |
+| #12 | pyproject.toml packaging + pytest config cleanup | XS |
+| #16 | Example script: end-to-end image-token generation walkthrough with comments | XS |
 | #18 | docs/API_REFERENCE.md for DiDACore/DiscreteDiffusionScheduler/DiDAInference | S |
 
 ### Epic: Phase 1 — Baselines and Pareto evaluation harness (#1)
@@ -24,14 +24,14 @@ work in `CONTRIBUTING.md`. Sizes: `[XS]` ≈ an hour or two, `[S]` ≈ a day,
 |-------|-------|------|------------|
 | #5 | MaskGIT cosine + Fast-dLLM confidence-threshold remasking baselines behind one scheduler API | S | — |
 | #4 | Speed/quality benchmark harness with seeds | S | — |
-| #6 | Pre-registered comparison report | XS | #5, #4 |
+| #7 | Pre-registered comparison report | XS | #5, #4 |
 
 ### Epic: Phase 2 — Synthetic text modality leg, educational reproduction (#2)
 
 | Issue | Title | Size | Blocked by |
 |-------|-------|------|------------|
-| #7 | Synthetic text task suite + data generators | S | — |
-| #8 | Text-leg hybrid masks + adaptation smoke test vs causal AR baseline | S | #7 |
+| #6 | Synthetic text task suite + data generators | S | — |
+| #8 | Text-leg hybrid masks + adaptation smoke test vs causal AR baseline | S | #6 |
 | #9 | Per-modality adaptation quality report | XS | #8 |
 
 ### Epic: Phase 3 (novel research) — LCRS, Learned Confidence Remasking Scheduler (#3)
@@ -40,29 +40,29 @@ work in `CONTRIBUTING.md`. Sizes: `[XS]` ≈ an hour or two, `[S]` ≈ a day,
 |-------|-------|------|------------|
 | #10 | Oracle unmask-order generator via greedy per-step search | S | #1 |
 | #11 | LCRS policy module with distillation training + tests | S | #10 |
-| #12 | Step-budget prediction head + per-sample adaptive stopping | S | #11 |
-| #14 | Evaluation: Pareto vs baselines, difficulty-adaptivity correlation, input ablations | S | #11, #12, #1 |
+| #13 | Step-budget prediction head + per-sample adaptive stopping | S | #11 |
+| #14 | Evaluation: Pareto vs baselines, difficulty-adaptivity correlation, input ablations | S | #11, #13, #1 |
 | #15 | Cross-modal transfer experiment (text↔image) | S | #2, #11 |
-| #16 | Results report against success criteria with honest negatives | S | #14, #15 |
+| #17 | Results report against success criteria with honest negatives | S | #14, #15 |
 
 ### Standalone (no epic)
 
 | Issue | Title | Size | Blocked by |
 |-------|-------|------|------------|
-| #13 | pyproject.toml packaging + pytest config cleanup | XS | — |
-| #17 | Example script: end-to-end image-token generation walkthrough | XS | — |
+| #12 | pyproject.toml packaging + pytest config cleanup | XS | — |
+| #16 | Example script: end-to-end image-token generation walkthrough | XS | — |
 | #18 | docs/API_REFERENCE.md for the public API | S | — |
 
 ## Suggested contribution paths
 
-- **First-time contributor (docs/packaging):** #13 → #17 or #18. Low risk,
+- **First-time contributor (docs/packaging):** #12 → #16 or #18. Low risk,
   immediate value, and a tour of the codebase.
-- **ML engineer (Phase 1):** #5 and #4 in either order → #6. You will build
+- **ML engineer (Phase 1):** #5 and #4 in either order → #7. You will build
   the measuring stick every later claim is checked against.
-- **ML engineer (Phase 2):** #7 → #8 → #9. Touches masks, data, and an
+- **ML engineer (Phase 2):** #6 → #8 → #9. Touches masks, data, and an
   honest parity check vs an AR baseline.
 - **Researcher (Phase 3, novel):** start once Phase 1 lands: #10 → #11 →
-  #12, then #14/#15, and synthesize in #16. Read `docs/ROADMAP.md` Phase 3
+  #13, then #14/#15, and synthesize in #17. Read `docs/ROADMAP.md` Phase 3
   and `docs/METHODS.md` first — the risks and pre-registered criteria are
   part of the task.
 

@@ -2,8 +2,11 @@
 
 This is the **zero-background** version. If words like "transformer,"
 "autoregressive," or "diffusion" are new to you, start here. We build the
-whole picture with one extended analogy — painting a picture — plus a few
-diagrams and one-sentence math explanations with links to friendly tutorials.
+whole picture with one extended analogy — painting a picture — plus diagrams.
+Every piece of math is introduced the same way: **first a tiny example with
+real numbers you can check by hand, then the intuition, then the notation**
+as shorthand for the procedure you just saw. No prerequisites beyond
+arithmetic.
 
 ## 1. The painting analogy
 
@@ -19,14 +22,14 @@ is 1,024 separate decisions — each waiting on the last. Careful, but slow.
 **Diffusion painting** = **sketch the whole canvas at once** (a blurry, noisy
 guess covering every square), then refine the entire canvas again and again.
 Each pass touches every square simultaneously. Instead of 1,024 sequential
-steps, you might need 10–20 full-canvas refinements. That is the core trick of
-discrete diffusion [3, 4].
+steps, you might need 10–20 full-canvas refinements. That is the core trick
+of discrete diffusion [3, 4].
 
 **Confidence unmasking** = after each refinement pass, **commit first to the
-strokes you're most sure of**. The artist looks at the whole canvas, finalizes
-the squares they feel confident about, and keeps reworking the uncertain ones.
-Easy regions (a flat sky) get finished early; hard regions (a face) get more
-passes. This is MaskGIT's idea [4], and DiDA inherits it.
+strokes you're most sure of**. The artist looks at the whole canvas,
+finalizes the squares they feel confident about, and keeps reworking the
+uncertain ones. Easy regions (a flat sky) get finished early; hard regions
+(a face) get more passes. This is MaskGIT's idea [4], and DiDA inherits it.
 
 **DiDA itself** (from Emu3.5 [1]) = taking an artist who was *trained* to
 paint left-to-right and teaching them this new whole-canvas technique —
@@ -36,58 +39,64 @@ apprenticeship where they copy their own old paintings (self-distillation).
 The result, per the paper: about **20× faster** painting, same quality, and
 their handwriting (text generation) is completely untouched.
 
-## 2. The key ideas, one at a time
+![Concept figure: DiDA decoding — a grid of masked image tokens passes through hybrid attention (bidirectional among noisy tokens, causal over the clean prefix), then confidence-based parallel unmasking commits the surest tokens and re-masks the rest, repeating a few times to yield the final image tokens.](figures/concept_figure.svg)
+
+## 2. The key ideas, one at a time — each with a tiny numeric example
 
 ### Tokens: images as words
 
 Computers don't store pictures as pixels inside these models; they chop an
 image into a grid of small patches and assign each patch a "word" from a
-fixed visual dictionary (a VQ codebook). Generating an image then becomes
-generating a sequence of words — which transformers are great at.
+fixed visual dictionary (a VQ codebook). *Tiny example:* a dictionary might
+be `{0: red square, 1: blue square, 2: green square, 3: gray square}`, and a
+2×2 image might be the token grid `[0, 1, 1, 2]`. Generating an image then
+becomes generating a sequence of words — which transformers are great at.
 
 ### Masking: the "noise" in discrete diffusion
 
 Instead of adding blurry pixel noise (as in photo diffusion), discrete
 diffusion uses a simpler kind of noise: **replace some tokens with a special
-`[MASK]` placeholder**. At the start of generation, *every* image position is
-masked. The model's job is to fill them in.
-
-> **Masking probability, in one sentence:** "Each token is independently
-> hidden with some probability that grows as we go from clean data to full
-> noise." (Friendly primer on probability:
-> [Khan Academy – Probability](https://www.khanacademy.org/math/statistics-probability/probability-library))
+`[MASK]` placeholder**. *Tiny example:* starting from the grid `[0, 1, 1, 2]`
+and hiding each position with probability ½, one possible corrupted version
+is `[[MASK], 1, [MASK], 2]`. At the start of generation, *every* image
+position is masked, and the model's job is to fill them in. "Masking
+probability" means exactly what it says: flip a biased coin per position;
+heads, the token is hidden.
 
 ### Schedules: how much to unmask at each step
 
 A **schedule** decides, at every refinement pass, how many positions to keep
-masked versus commit. A common choice is the **cosine schedule** [4]: start
-cautiously, commit more aggressively in the middle, finish the last few
-carefully.
-
-> **Cosine schedule, in one sentence:** "The fraction of tokens still masked
-> follows the smooth curve of cos(t), so unmasking starts slow, speeds up,
-> then slows again." (Cosine refresher:
-> [Khan Academy – Trigonometry](https://www.khanacademy.org/math/trigonometry))
+masked versus commit. *Tiny example with the cosine schedule* [4]: for 4
+passes, compute cos of the fraction of the way through — cos(0) = 1.00,
+cos(0.39) ≈ 0.92, cos(0.79) ≈ 0.71, cos(1.18) ≈ 0.38 — and use those as the
+fraction still masked. Out of 8 positions that means roughly 8 → 7 → 6 → 3 →
+0 masked: start cautiously, commit faster in the middle, finish carefully.
+The **cosine schedule** is nothing more than that: the masked fraction
+follows the smooth curve of cos, so unmasking starts slow, speeds up, then
+slows again.
 
 ### Confidence: deciding what to commit
 
 After each pass, the model outputs, for every masked position, a full guess
-plus a **confidence score** (how sure it is). We finalize the
-highest-confidence positions and re-mask the rest.
-
-> **Confidence, in one sentence:** "The model's predicted probability for its
-> top guess at a position — a number between 0 and 1 saying how certain it
-> is." (Softmax/probability intuition:
-> [StatQuest – Softmax](https://www.youtube.com/results?search_query=statquest+softmax))
+plus a **confidence score**. *Tiny example:* for masked positions 1–4 the
+model's top guesses have confidences `0.9, 0.4, 0.7, 0.3`. If the schedule
+says "commit 2 this pass," we finalize positions 1 and 3 and re-mask 2 and 4.
+Where do confidences come from? The model produces a raw score per possible
+token; these are converted to probabilities by exponentiating each score and
+dividing by the total (scores `2, 1, 0, 0` → e^2 ≈ 7.39, e^1 ≈ 2.72, 1, 1 →
+probabilities ≈ `0.61, 0.22, 0.08, 0.08`). That recipe is called **softmax**,
+and the confidence is simply the largest resulting probability — the 0.61.
 
 ### Training: teaching the model to fill blanks
 
-> **Cross-entropy loss, in one sentence:** "A scoring rule that heavily
-> penalizes the model when it assigns low probability to the correct token —
-> the standard way to train models that pick one option out of many."
-> ([StatQuest – Cross Entropy](https://www.youtube.com/results?search_query=statquest+cross+entropy);
-> see also [3Blue1Brown – Neural Networks](https://www.3blue1brown.com/topics/neural-networks)
-> for how such models learn.)
+**Cross-entropy loss, by tiny example:** suppose the correct token at a
+masked position is "blue" and the model's probabilities were
+`{red: 0.2, blue: 0.6, green: 0.2}`. The loss is −log(probability of the
+right answer) = −log(0.6) ≈ 0.51. If the model had been more sure — 0.9 —
+the loss would be ≈ 0.11; if it had nearly ruled the right answer out — 0.05
+— the loss explodes to ≈ 3.0. That scoring rule ("pay heavily for doubting
+the truth") is all cross-entropy is, and it is the standard way to train
+models that pick one option out of many.
 
 ## 3. How DiDA decoding flows
 
@@ -110,9 +119,9 @@ pass handles *all* positions at once [1, 4].
 Attention rules decide which tokens may "see" which other tokens. AR models
 use a **causal** rule: a token may only look left (to the past). DiDA keeps
 that rule for *clean* tokens (the text prompt, already-finished regions) but
-lets *noisy image tokens* look in **all directions** at each other — because a
-half-finished painting region benefits from seeing the whole region, not just
-its left half [1].
+lets *noisy image tokens* look in **all directions** at each other — because
+a half-finished painting region benefits from seeing the whole region, not
+just its left half [1].
 
 ```mermaid
 flowchart LR
@@ -166,16 +175,16 @@ flowchart LR
 ```
 
 That is the research direction of this repository's roadmap
-(`docs/ROADMAP.md`); the current codebase implements the DiDA mechanics such a
-scheduler would plug into.
+(`docs/ROADMAP.md`); the current codebase implements the DiDA mechanics such
+a scheduler would plug into.
 
 ## 7. Keeping expectations honest
 
 This repo runs on **synthetic** image-token grids with tiny models. It
-demonstrates and tests the *mechanics* — masking, schedules, hybrid attention,
-parallel sampling — not real images or real speedups. The 20× number comes
-from the Emu3.5 paper [1]. Think of this codebase as a flight simulator: the
-instruments are real, the runway is not.
+demonstrates and tests the *mechanics* — masking, schedules, hybrid
+attention, parallel sampling — not real images or real speedups. The 20×
+number comes from the Emu3.5 paper [1]. Think of this codebase as a flight
+simulator: the instruments are real, the runway is not.
 
 ## References
 

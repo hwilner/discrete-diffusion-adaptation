@@ -10,6 +10,8 @@ This package provides:
 - DiDAAttentionMask: Hybrid attention mask generation
 - DiDASampler: Sampling interface for generation
 - DiDAInference: High-level inference API
+- CTMCUniformizationSampler: exact CTMC sampling via uniformization
+- log_gumbel_softmax: log-space Gumbel-Softmax (underflow-safe)
 """
 
 from .core import (
@@ -21,8 +23,12 @@ from .sampler import (
     DiDASampler,
     DiDAInference
 )
+from .ctmc import (
+    CTMCUniformizationSampler,
+    log_gumbel_softmax
+)
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "DiDACore",
@@ -30,4 +36,6 @@ __all__ = [
     "DiDAAttentionMask",
     "DiDASampler",
     "DiDAInference",
+    "CTMCUniformizationSampler",
+    "log_gumbel_softmax",
 ]

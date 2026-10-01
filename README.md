@@ -16,7 +16,9 @@ This implementation is designed for researchers, students, and engineers who wan
 - **Core DiDA Mechanism:** Full implementation of the discrete diffusion process over visual tokens.
 - **Hybrid Attention:** Custom attention masks that enable bidirectional attention for noisy image tokens while preserving causal attention for clean text/image tokens.
 - **Complete Sampling Pipeline:** Includes a high-level sampler for both pure image generation and interleaved text-to-image generation.
-- **Comprehensive Test Suite:** Includes **18 unit and integration tests** to ensure the correctness of the implementation. All tests pass successfully.
+- **CTMC Uniformization Sampling:** Exact continuous-time Markov chain trajectories via uniformization, compressing dozens of discrete re-sampling steps into a Poisson number of jump evaluations.
+- **Log-Space Gumbel-Softmax:** Underflow-safe reparameterization for large-vocabulary token distributions.
+- **Comprehensive Test Suite:** Includes **30 unit and integration tests** to ensure the correctness of the implementation. All tests pass successfully.
 - **Detailed Documentation:** In-depth explanations of the architecture, testing methodology, and usage.
 - **Working Examples:** Clear examples demonstrating how to use the DiDA implementation for various tasks.
 
@@ -65,12 +67,22 @@ print(f"Generated {image_tokens.shape[1]} image tokens.")
 
 For more detailed examples, please see the `examples/` directory.
 
+## CTMC Uniformization and Log-Space Sampling
+
+`dida/ctmc.py` implements the Phase-2 sampling upgrades:
+
+- **CTMC uniformization** reformulates the discrete noise schedule as a continuous-time Markov chain: token transitions become Poisson jump events, so trajectories are sampled exactly with `Poisson(lambda * T)` jump evaluations instead of one categorical re-sampling per grid step.
+- **Log-space Gumbel-Softmax** performs the reparameterization strictly in logarithmic space, preventing probability underflow over large token vocabularies at low temperatures.
+- **Entropy-regulated guidance** (`reverse_guided_step`) modulates each reverse step by verifier disagreement, `Q_tilde(i,j) ∝ Q_t(i,j) * exp(-lambda * H(Verifier(x_t = j)))`, steering trajectories without modifying model weights.
+
+Terminal marginals are validated against the closed-form matrix exponential `expm(Q T)` in `tests/test_ctmc.py`.
+
 ## Project Structure
 
 ```
 discrete-diffusion-adaptation/
 ├── dida/              # Source code for the DiDA implementation
-├── tests/             # Test suite (18 tests, all passing)
+├── tests/             # Test suite (30 tests, all passing)
 ├── examples/          # Usage examples
 ├── docs/              # Detailed documentation
 ├── README.md          # This file

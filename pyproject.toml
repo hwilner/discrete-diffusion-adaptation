@@ -1,0 +1,59 @@
+# pyproject.toml — single source of truth for packaging and tool configuration.
+#
+# Issue #12: this file consolidates the project's PEP 621 metadata (previously
+# duplicated in setup.py) and the pytest configuration in one standard place.
+# setup.py is retained only as a thin compatibility shim for legacy tooling and
+# holds no metadata of its own, so nothing is defined in two places.
+
+# --- Build backend -----------------------------------------------------------
+# setuptools is the existing backend (the project already ships a setup.py);
+# >= 61 is the first release that reads PEP 621 metadata from this file.
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+# --- Project metadata (mirrors the former setup.py fields one-to-one) --------
+[project]
+name = "dida"
+version = "0.1.0"
+description = "An educational implementation of Discrete Diffusion Adaptation (DiDA) from the Emu3.5 paper."
+readme = "README.md"
+requires-python = ">=3.6"
+authors = [{ name = "Manus AI" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+# Runtime dependencies: identical to requirements.txt and the former
+# setup.py install_requires — no version changes (per the issue boundary).
+dependencies = [
+    "torch",
+]
+
+# Optional developer dependencies: everything needed to run the test suite as
+# documented in CONTRIBUTING.md (`pip install -e .` then `pytest`).
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+# Project homepage (the former setup.py `url` field).
+[project.urls]
+Homepage = "https://github.com/hwilner/discrete-diffusion-adaptation"
+
+# --- Package discovery -------------------------------------------------------
+# Pin the package list explicitly instead of relying on auto-discovery so the
+# result matches the former `find_packages()`: only `dida/` is importable
+# package code (tests/ and examples/ carry no __init__.py and stay excluded).
+[tool.setuptools]
+packages = ["dida"]
+
+# --- pytest configuration ----------------------------------------------------
+# Centralized here so no separate pytest.ini / setup.cfg / tox.ini is needed.
+# testpaths makes a bare `pytest` invocation collect the suite in tests/;
+# addopts only affects reporting (a short summary line), not test selection
+# or outcomes, so the suite's behavior is unchanged.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

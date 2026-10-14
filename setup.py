@@ -1,25 +1,13 @@
-"""
-Setup script for the DiDA package.
+"""Compatibility shim for legacy tooling.
+
+All project metadata and dependencies are declared in ``pyproject.toml``
+(PEP 621) — this file intentionally carries no configuration of its own so
+that nothing is defined in two places. It exists only so that workflows
+which still invoke ``setup.py`` directly (or older ``pip`` versions without
+full PEP 621/660 support) continue to work; modern installs
+(``pip install -e .``) read ``pyproject.toml`` alone.
 """
 
-from setuptools import setup, find_packages
+from setuptools import setup
 
-setup(
-    name="dida",
-    version="0.1.0",
-    author="Manus AI",
-    description="An educational implementation of Discrete Diffusion Adaptation (DiDA) from the Emu3.5 paper.",
-    long_description=open("README.md").read(),
-    long_description_content_type="text/markdown",
-    url="https://github.com/hwilner/discrete-diffusion-adaptation",
-    packages=find_packages(),
-    classifiers=[
-        "Programming Language :: Python :: 3",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
-    ],
-    python_requires=">=3.6",
-    install_requires=[
-        "torch",
-    ],
-)
+setup()

@@ -46,6 +46,28 @@ One JSON record per `(seed, step_budget)` cell is written (sorted keys,
 no timestamps), so the same config and the same deterministic sampler
 always produce byte-identical output. Omit `--out` to write to stdout.
 
+## Producing the Pareto-curve report
+
+```bash
+python -m dida.pareto --records results.jsonl --out report.json
+```
+
+`dida/pareto.py` consumes the harness's JSON-lines records (never
+re-running anything) and emits one self-describing JSON report: the
+recorded seed/budget grid, the per-budget curve (mean forward-pass
+count and, per configured quality metric, the across-seed mean/min/max
+with the metric's optimization direction), and the Pareto frontier per
+metric — the step budgets no other budget dominates on the
+speed/quality trade. Exact match is maximized; total variation is
+minimized. Omit `--out` to write the report to stdout.
+
+The report loader is as strict as the harness config loader: records
+must come from one config and one task type, carry the same metric key
+set, and occupy distinct `(seed, step_budget)` cells, so a mixed or
+double-counted input fails loudly instead of producing a corrupt curve.
+Serialization uses sorted keys with no timestamps, so identical record
+bytes always produce an identical report.
+
 ## Sampler protocol
 
 The runner is sampler-agnostic. A sampler is any callable:
@@ -70,9 +92,11 @@ and plug into the same protocol without touching the harness.
 
 ## Boundary and limitations
 
-- Harness machinery only: **no benchmark results are analyzed here**,
-  and no Pareto-curve report is produced (that is the separate
-  Pareto-output child issue, which consumes these records).
+- Harness and report machinery only: **no benchmark results are
+  analyzed here**. The Pareto-curve report (`dida/pareto.py`,
+  documented above) formats recorded numbers into the curve artifact;
+  it draws no conclusions, and a report built from the diagnostic
+  wiring fixture is a plumbing demonstration, not a benchmark result.
 - No text-leg tasks and no changes to model training, matching the
   parent issue boundary.
 - The metrics in `dida/metrics.py` are pure deterministic functions

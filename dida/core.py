@@ -154,6 +154,63 @@ class DiDAAttentionMask:
         return mask
     
     @staticmethod
+    def create_guidance_masks(
+        seq_len: int,
+        condition_len: int,
+        device: torch.device = None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Create the conditional and unconditional masks for classifier-free
+        guidance.
+
+        The conditional mask lets the generated tokens attend to the
+        conditioning prefix; the unconditional mask hides that prefix from
+        them. Hiding the prefix is exactly a generation that never saw it,
+        which is the reference the guidance term is measured against. The
+        prefix itself always attends causally to itself, so the two masks
+        differ only in what the generated tokens are allowed to see.
+
+        Args:
+            seq_len: Total sequence length (prefix plus generated tokens).
+            condition_len: Number of conditioning prefix tokens.
+            device: Device to create the masks on.
+
+        Returns:
+            Tuple of (conditional_mask, unconditional_mask), each of shape
+            (seq_len, seq_len) where True indicates a position that can be
+            attended to.
+
+        Raises:
+            ValueError: If ``condition_len`` is negative or larger than
+                ``seq_len``.
+        """
+        if condition_len < 0 or condition_len > seq_len:
+            raise ValueError(
+                "condition_len must be between 0 and seq_len "
+                "(got %d with seq_len %d)." % (condition_len, seq_len)
+            )
+
+        if device is None:
+            device = torch.device('cpu')
+
+        # Conditional pass: the generated tokens see the prefix and each
+        # other (bidirectionally), while the prefix stays causal.
+        conditional = DiDAAttentionMask.create_dida_mask(
+            seq_len=seq_len,
+            noisy_start_idx=condition_len,
+            noisy_end_idx=seq_len,
+            device=device
+        )
+
+        # Unconditional pass: drop the prefix columns from the generated
+        # token rows, so those tokens can no longer condition on it.
+        unconditional = conditional.clone()
+        if condition_len > 0:
+            unconditional[condition_len:, :condition_len] = False
+
+        return conditional, unconditional
+
+    @staticmethod
     def create_interleaved_mask(
         text_positions: torch.Tensor,
         image_positions: torch.Tensor,

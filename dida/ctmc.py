@@ -146,6 +146,10 @@ class CTMCUniformizationSampler:
     ) -> torch.Tensor:
         """Draw the Poisson number of jump events over an interval.
 
+        The draw honours ``generator`` so that a seeded run is exactly
+        reproducible: the counts come from ``torch.poisson`` with the
+        supplied generator rather than from the global RNG.
+
         Args:
             duration: Interval length ``T``.
             batch_shape: Leading shape of the returned count tensor.
@@ -156,9 +160,17 @@ class CTMCUniformizationSampler:
         """
         if duration < 0:
             raise ValueError("duration must be non-negative")
-        mean = torch.tensor(self.uniformization_rate * duration)
-        poisson = torch.distributions.Poisson(mean)
-        counts = poisson.sample(batch_shape)
+        mean = self.uniformization_rate * duration
+        # ``torch.poisson`` accepts a generator, unlike
+        # ``torch.distributions.Poisson.sample``, so the counts are
+        # reproducible from the generator alone.
+        rates = torch.full(
+            tuple(batch_shape),
+            mean,
+            device=self.rate_matrix.device,
+            dtype=torch.float32,
+        )
+        counts = torch.poisson(rates, generator=generator)
         return counts.long()
 
     def sample_terminal_state(
@@ -180,8 +192,21 @@ class CTMCUniformizationSampler:
 
         Returns:
             Integer terminal state indices, shape ``(B,)``.
+
+        Raises:
+            ValueError: If ``duration`` is negative.
         """
+        if duration < 0:
+            raise ValueError("duration must be non-negative")
+
         lam_t = self.uniformization_rate * duration
+        if lam_t <= 0.0:
+            # A zero-length interval cannot move the chain, so the terminal
+            # state is the start state. The uniformization series below
+            # would instead need log(0) for its first jump weight, which
+            # is undefined.
+            return start_states.clone()
+
         # Truncation: upper quantile with tail mass < 1e-12.
         n_max = int(lam_t + 10.0 * (lam_t ** 0.5 + 1.0)) + 20
 

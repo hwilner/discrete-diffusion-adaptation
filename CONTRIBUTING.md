@@ -31,7 +31,7 @@ git clone https://github.com/hwilner/discrete-diffusion-adaptation.git
 cd discrete-diffusion-adaptation
 pip install -r requirements.txt
 pip install -e .
-pytest            # all 18 tests should pass
+pytest            # all 133 tests should pass
 ```
 
 ## Branch and PR conventions

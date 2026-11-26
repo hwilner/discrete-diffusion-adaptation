@@ -225,6 +225,31 @@ DiDAAttentionMask.create_dida_mask(
 **Returns:** boolean `torch.Tensor` of shape `(seq_len, seq_len)`; entry
 `(i, j)` is `True` when position `i` may attend to position `j`.
 
+### `create_guidance_masks` (static)
+
+```python
+DiDAAttentionMask.create_guidance_masks(
+    seq_len: int,
+    condition_len: int,
+    device: torch.device = None
+) -> Tuple[torch.Tensor, torch.Tensor]
+```
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `seq_len` | `int` | *(required)* | Total sequence length (prefix plus generated tokens). |
+| `condition_len` | `int` | *(required)* | Number of conditioning prefix tokens. |
+| `device` | `torch.device` | `None` | Device to create the masks on; defaults to CPU. |
+
+**Returns:** a tuple `(conditional_mask, unconditional_mask)`, each a boolean
+`torch.Tensor` of shape `(seq_len, seq_len)`. The conditional mask lets the
+generated tokens attend to the conditioning prefix; the unconditional mask
+hides that prefix from them, which is the reference the guidance term is
+measured against. The prefix itself stays causal in both.
+
+**Raises:** `ValueError` if `condition_len` is negative or larger than
+`seq_len`.
+
 ### `create_interleaved_mask` (static)
 
 ```python
@@ -317,7 +342,7 @@ sample(
 | `num_tokens` | `int` | *(required)* | Number of tokens to generate per sample. |
 | `device` | `torch.device` | *(required)* | Device to generate on. |
 | `temperature` | `float` | `1.0` | Sampling temperature. |
-| `guidance_scale` | `float` | `1.0` | Classifier-free guidance scale (accepted; guidance is applied by `sample_with_guidance`). |
+| `guidance_scale` | `float` | `1.0` | Classifier-free guidance scale. This method generates unconditionally, so there is no prefix to hide and the value cannot change the result; use `sample_with_guidance` to condition on a prefix. |
 
 **Returns:** `torch.Tensor` of shape `(batch_size, num_tokens)` — generated
 token indices. Runs `num_steps` denoising iterations under `torch.no_grad()`,
@@ -365,15 +390,27 @@ sample_with_guidance(
 |---|---|---|---|
 | `batch_size` | `int` | *(required)* | Number of samples to generate. |
 | `num_tokens` | `int` | *(required)* | Number of tokens per sample. |
-| `condition` | `Optional[torch.Tensor]` | *(required)* | Optional conditioning tokens. |
+| `condition` | `Optional[torch.Tensor]` | *(required)* | Optional conditioning tokens, shape `(batch_size, condition_len)`. |
 | `device` | `torch.device` | *(required)* | Device to generate on. |
-| `guidance_scale` | `float` | `7.5` | Strength of guidance (`1.0` = no guidance). |
-| `temperature` | `float` | `1.0` | Sampling temperature. |
+| `guidance_scale` | `float` | `7.5` | Strength of guidance (`1.0` = no guidance, `0.0` = fully unconditional). |
+| `temperature` | `float` | `1.0` | Sampling temperature; values at or below zero decode greedily. |
 
 **Returns:** `torch.Tensor` of shape `(batch_size, num_tokens)` — generated
-token indices. When `guidance_scale != 1.0` and `condition` is not `None`,
-each step combines conditional and unconditional logits as
-`uncond + guidance_scale * (cond - uncond)` before sampling.
+token indices.
+
+**How guidance is applied:** the conditioning tokens form a fixed prefix of
+the sequence and the generated tokens are denoised behind it. Every step
+runs the denoiser twice — once with the generated tokens able to attend to
+the prefix (the *conditional* pass) and once with the prefix hidden from
+them (the *unconditional* pass, i.e. a generation that never saw the
+condition). The two logit sets are combined as
+`uncond + guidance_scale * (cond - uncond)` before sampling, so a scale of
+`1.0` leaves the conditional logits unchanged and a scale of `0.0` leaves
+the unconditional logits unchanged. Without a condition there is nothing to
+hide, so only the conditional pass runs.
+
+**Raises:** `ValueError` if `condition` is not a 2-D integer tensor with
+`batch_size` rows, or if it holds token indices outside `[0, vocab_size)`.
 
 ### Snippet
 

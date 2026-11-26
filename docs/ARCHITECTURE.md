@@ -57,6 +57,7 @@ The `DiDASampler` class orchestrates the entire generation process. It provides 
 
 - **`sample`:** Pure image generation, where all tokens are generated in parallel.
 - **`sample_interleaved`:** Text-to-image generation, where the model generates image tokens conditioned on a given sequence of text tokens. In this case, the text tokens remain fixed, and only the image tokens are denoised.
+- **`sample_with_guidance`:** Classifier-free guidance, where the conditioning tokens form a fixed prefix and the generated tokens are denoised behind it. Each step runs the denoiser twice — once where the generated tokens can see the prefix and once where the prefix is hidden from them — and combines the two logit sets as `uncond + guidance_scale * (cond - uncond)`.
 
 The `DiDAInference` class provides a high-level API for these generation tasks, abstracting away the details of tokenization and sampling.
 

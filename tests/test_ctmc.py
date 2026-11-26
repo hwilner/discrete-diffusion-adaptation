@@ -6,6 +6,7 @@ exponential ``expm(Q T)`` on small chains, and the log-space Gumbel-Softmax is
 validated for underflow resistance and distributional correctness.
 """
 
+import pytest
 import torch
 import torch.nn.functional as F
 
@@ -140,6 +141,83 @@ class TestCTMCUniformization:
         except ValueError:
             return
         raise AssertionError("expected ValueError for invalid rate matrix")
+
+
+class TestReproducibility:
+    """The sampler's randomness must be reproducible from its generator."""
+
+    def test_generator_makes_jump_counts_reproducible(self):
+        """Two identically seeded generators must give the same counts."""
+        sampler = CTMCUniformizationSampler(_two_state_chain(1.0))
+        first = sampler.sample_num_jumps(
+            1.0, batch_shape=(64,), generator=torch.Generator().manual_seed(1234)
+        )
+        second = sampler.sample_num_jumps(
+            1.0, batch_shape=(64,), generator=torch.Generator().manual_seed(1234)
+        )
+
+        assert torch.equal(first, second)
+
+    def test_generator_overrides_the_global_random_state(self):
+        """A seeded generator must not be disturbed by the global RNG."""
+        sampler = CTMCUniformizationSampler(_two_state_chain(1.0))
+
+        torch.manual_seed(0)
+        first = sampler.sample_num_jumps(
+            1.0, batch_shape=(64,), generator=torch.Generator().manual_seed(1234)
+        )
+        torch.manual_seed(999)
+        second = sampler.sample_num_jumps(
+            1.0, batch_shape=(64,), generator=torch.Generator().manual_seed(1234)
+        )
+
+        assert torch.equal(first, second)
+
+    def test_different_generators_give_different_counts(self):
+        """Different seeds must not collapse onto the same draw."""
+        sampler = CTMCUniformizationSampler(_two_state_chain(1.0))
+        first = sampler.sample_num_jumps(
+            3.0, batch_shape=(256,), generator=torch.Generator().manual_seed(1)
+        )
+        second = sampler.sample_num_jumps(
+            3.0, batch_shape=(256,), generator=torch.Generator().manual_seed(2)
+        )
+
+        assert not torch.equal(first, second)
+
+
+class TestZeroAndNegativeDuration:
+    """Edge cases of the interval length accepted by the sampler."""
+
+    def test_zero_duration_returns_the_start_states(self):
+        """A zero-length interval cannot move the chain."""
+        sampler = CTMCUniformizationSampler(_two_state_chain(2.0))
+        starts = torch.tensor([0, 1, 0], dtype=torch.long)
+
+        terminals = sampler.sample_terminal_state(starts, 0.0)
+
+        assert torch.equal(terminals, starts)
+
+    def test_zero_duration_draws_no_jumps(self):
+        """A zero-length interval contains no jump events."""
+        sampler = CTMCUniformizationSampler(_two_state_chain(2.0))
+
+        counts = sampler.sample_num_jumps(
+            0.0, batch_shape=(8,), generator=torch.Generator().manual_seed(3)
+        )
+
+        assert (counts == 0).all()
+
+    def test_negative_duration_raises(self):
+        """A negative interval is meaningless and must fail loudly."""
+        sampler = CTMCUniformizationSampler(_two_state_chain(2.0))
+        starts = torch.zeros(3, dtype=torch.long)
+
+        with pytest.raises(ValueError):
+            sampler.sample_terminal_state(starts, -1.0)
+
+        with pytest.raises(ValueError):
+            sampler.sample_num_jumps(-1.0, batch_shape=(4,))
 
 
 class TestReverseGuidedStep:

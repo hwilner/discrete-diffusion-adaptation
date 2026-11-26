@@ -37,5 +37,5 @@ Then, run the test suite from the root of the repository:
 python -m pytest -v
 ```
 
-All 18 tests should pass, confirming the correctness of the implementation.
+All 133 tests should pass, confirming the correctness of the implementation.
 """

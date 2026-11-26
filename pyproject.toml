@@ -15,10 +15,16 @@ build-backend = "setuptools.build_meta"
 # --- Project metadata (mirrors the former setup.py fields one-to-one) --------
 [project]
 name = "dida"
-version = "0.1.0"
+# The version is mirrored from `dida/__init__.py`, which is the runtime
+# source of truth; `tests/test_repo_consistency.py` fails if the two drift
+# apart, because a release built from a mismatched pair ships one version
+# while the code reports another.
+version = "0.2.0"
 description = "An educational implementation of Discrete Diffusion Adaptation (DiDA) from the Emu3.5 paper."
 readme = "README.md"
-requires-python = ">=3.6"
+# torch 2.5 and newer require Python >= 3.9, so the previous ">= 3.6" let
+# pip accept a Python that no current torch release supports.
+requires-python = ">=3.9"
 authors = [{ name = "Manus AI" }]
 classifiers = [
     "Programming Language :: Python :: 3",

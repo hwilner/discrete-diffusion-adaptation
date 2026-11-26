@@ -11,6 +11,89 @@ from typing import Optional, List, Tuple
 from .core import DiDACore, DiscreteDiffusionScheduler, DiDAAttentionMask
 
 
+def _validated_condition(
+    condition: Optional[torch.Tensor],
+    batch_size: int,
+    vocab_size: int,
+    device: torch.device
+) -> Optional[torch.Tensor]:
+    """Validate the optional conditioning prefix of a guided sampling run.
+
+    Args:
+        condition: Conditioning tokens, shape (batch_size, condition_len),
+            or None for unconditional generation.
+        batch_size: Batch size the caller asked for.
+        vocab_size: Size of the token vocabulary.
+        device: Device the tokens must live on.
+
+    Returns:
+        The conditioning tokens as a ``torch.long`` tensor on ``device``, or
+        None when ``condition`` is None.
+
+    Raises:
+        ValueError: If ``condition`` is not a 2-D integer tensor with
+            ``batch_size`` rows, or if it holds token indices outside
+            ``[0, vocab_size)``.
+    """
+    if condition is None:
+        return None
+
+    if not isinstance(condition, torch.Tensor):
+        raise ValueError(
+            "condition must be a torch.Tensor of token indices or None."
+        )
+    if condition.dim() != 2:
+        raise ValueError(
+            "condition must have shape (batch_size, condition_len); got %d "
+            "dimension(s)." % condition.dim()
+        )
+    if condition.shape[0] != batch_size:
+        raise ValueError(
+            "condition has %d rows but batch_size is %d; the two must agree."
+            % (condition.shape[0], batch_size)
+        )
+    if condition.dtype.is_floating_point or condition.dtype.is_complex:
+        raise ValueError(
+            "condition must hold integer token indices, got dtype %s."
+            % condition.dtype
+        )
+    if condition.numel() > 0:
+        lowest = int(condition.min())
+        highest = int(condition.max())
+        if lowest < 0 or highest >= vocab_size:
+            raise ValueError(
+                "condition holds token indices outside [0, %d): got [%d, %d]."
+                % (vocab_size, lowest, highest)
+            )
+
+    return condition.to(device=device, dtype=torch.long)
+
+
+def _sample_from_logits(
+    logits: torch.Tensor,
+    temperature: float,
+    vocab_size: int
+) -> torch.Tensor:
+    """Sample token indices from a logit tensor at the given temperature.
+
+    Args:
+        logits: Logits of shape (..., vocab_size).
+        temperature: Sampling temperature; values at or below zero decode
+            greedily instead of sampling.
+        vocab_size: Size of the token vocabulary.
+
+    Returns:
+        Sampled token indices of shape ``logits.shape[:-1]``.
+    """
+    if temperature > 0:
+        probs = torch.softmax(logits / temperature, dim=-1)
+        flat = probs.reshape(-1, vocab_size)
+        return torch.multinomial(flat, num_samples=1).reshape(logits.shape[:-1])
+
+    # Greedy decoding, matching DiDACore.denoise_step's temperature <= 0 path.
+    return torch.argmax(logits, dim=-1)
+
+
 class DiDASampler:
     """
     Sampler for DiDA-based generation.
@@ -55,47 +138,32 @@ class DiDASampler:
     ) -> torch.Tensor:
         """
         Generate tokens using DiDA sampling.
-        
+
+        The run is unconditional: there is no conditioning prefix to drop,
+        so ``guidance_scale`` cannot change the result and is forwarded to
+        :meth:`sample_with_guidance` for API symmetry only. Use
+        :meth:`sample_with_guidance` to condition on a token prefix.
+
         Args:
             batch_size: Number of samples to generate.
             num_tokens: Number of tokens to generate per sample.
             device: Device to generate on.
             temperature: Sampling temperature.
-            guidance_scale: Classifier-free guidance scale.
-            
+            guidance_scale: Classifier-free guidance scale. Inert here
+                because this method generates unconditionally.
+
         Returns:
             Generated token indices, shape (batch_size, num_tokens).
         """
-        # Initialize with random tokens (fully noisy)
-        tokens = torch.randint(
-            0, self.vocab_size,
-            (batch_size, num_tokens),
-            device=device
+        return self.sample_with_guidance(
+            batch_size=batch_size,
+            num_tokens=num_tokens,
+            condition=None,
+            device=device,
+            guidance_scale=guidance_scale,
+            temperature=temperature
         )
-        
-        # Get timesteps in reverse order (denoising)
-        timesteps = self.scheduler.get_timesteps(reverse=True)
-        
-        # Iterative denoising
-        for t in timesteps:
-            # Create attention mask (bidirectional for all tokens during generation)
-            attention_mask = DiDAAttentionMask.create_dida_mask(
-                seq_len=num_tokens,
-                noisy_start_idx=0,
-                noisy_end_idx=num_tokens,
-                device=device
-            )
-            
-            # Denoise
-            tokens = self.model.denoise_step(
-                tokens,
-                timestep=t.item(),
-                attention_mask=attention_mask,
-                temperature=temperature
-            )
-        
-        return tokens
-    
+
     @torch.no_grad()
     def sample_interleaved(
         self,
@@ -182,73 +250,114 @@ class DiDASampler:
     ) -> torch.Tensor:
         """
         Generate tokens with classifier-free guidance.
-        
+
+        The conditioning tokens form a fixed prefix of the sequence and the
+        generated tokens are denoised behind it. Every step runs the
+        denoiser twice: once where the generated tokens can attend to the
+        prefix (the conditional pass) and once where the prefix is hidden
+        from them (the unconditional pass). The two logit sets are combined
+        as ``uncond + guidance_scale * (cond - uncond)``, which amplifies
+        the difference the prefix makes. ``guidance_scale = 1.0`` leaves the
+        conditional logits unchanged, ``guidance_scale = 0.0`` leaves the
+        unconditional logits unchanged, and without a condition there is
+        nothing to hide, so only the conditional pass runs.
+
         Args:
             batch_size: Number of samples to generate.
             num_tokens: Number of tokens per sample.
-            condition: Optional conditioning tokens.
+            condition: Optional conditioning tokens of shape
+                (batch_size, condition_len). None means unconditional
+                generation.
             device: Device to generate on.
             guidance_scale: Strength of guidance (1.0 = no guidance).
-            temperature: Sampling temperature.
-            
+            temperature: Sampling temperature; values at or below zero
+                decode greedily.
+
         Returns:
-            Generated tokens with guidance applied.
+            Generated token indices, shape (batch_size, num_tokens).
+
+        Raises:
+            ValueError: If ``condition`` is not a 2-D integer tensor with
+                ``batch_size`` rows and in-range token indices.
         """
+        condition_tokens = _validated_condition(
+            condition,
+            batch_size=batch_size,
+            vocab_size=self.vocab_size,
+            device=device
+        )
+        condition_len = 0 if condition_tokens is None else condition_tokens.shape[1]
+
         # Initialize noisy tokens
         tokens = torch.randint(
             0, self.vocab_size,
             (batch_size, num_tokens),
             device=device
         )
-        
+
         timesteps = self.scheduler.get_timesteps(reverse=True)
-        
+
+        # The masks depend only on the sequence layout, so they are built
+        # once instead of once per denoising step.
+        conditional_mask, unconditional_mask = DiDAAttentionMask.create_guidance_masks(
+            seq_len=condition_len + num_tokens,
+            condition_len=condition_len,
+            device=device
+        )
+
         for t in timesteps:
-            attention_mask = DiDAAttentionMask.create_dida_mask(
-                seq_len=num_tokens,
-                noisy_start_idx=0,
-                noisy_end_idx=num_tokens,
-                device=device
+            # The prefix is re-attached every step: only the generated
+            # tokens are resampled, the conditioning tokens stay fixed.
+            sequence = tokens if condition_tokens is None else torch.cat(
+                [condition_tokens, tokens], dim=1
             )
-            
+            timestep_tensor = torch.tensor(t.item(), device=device)
+
             # Get conditional logits
             logits_cond = self.model(
-                tokens,
-                torch.tensor(t.item(), device=device),
-                attention_mask
+                sequence,
+                timestep_tensor,
+                conditional_mask
             )
-            
-            if guidance_scale != 1.0 and condition is not None:
+
+            if condition_tokens is None or guidance_scale == 1.0:
+                # Without a prefix to hide there is no second pass to take,
+                # and at scale 1.0 the combination reduces to the
+                # conditional logits anyway.
+                logits = logits_cond
+            else:
                 # Get unconditional logits
                 logits_uncond = self.model(
-                    tokens,
-                    torch.tensor(t.item(), device=device),
-                    attention_mask
+                    sequence,
+                    timestep_tensor,
+                    unconditional_mask
                 )
-                
+
                 # Apply classifier-free guidance
                 logits = logits_uncond + guidance_scale * (logits_cond - logits_uncond)
-            else:
-                logits = logits_cond
-            
+
+            # Only the generated positions are resampled; the prefix logits
+            # belong to the fixed conditioning tokens.
+            logits = logits[:, condition_len:]
+
             # Sample from guided logits
-            probs = torch.softmax(logits / temperature, dim=-1)
-            tokens = torch.multinomial(
-                probs.view(-1, self.vocab_size),
-                num_samples=1
-            ).view(batch_size, num_tokens)
-        
+            tokens = _sample_from_logits(
+                logits,
+                temperature=temperature,
+                vocab_size=self.vocab_size
+            )
+
         return tokens
 
 
 class DiDAInference:
     """
     High-level inference interface for DiDA.
-    
+
     Provides convenient methods for different generation scenarios:
-    - Pure image generation
-    - Text-to-image generation
-    - Interleaved text-image generation
+    - Pure image generation (:meth:`generate_image`)
+    - Text-to-image generation (:meth:`text_to_image`), which generates the
+      image tokens in parallel behind the given text tokens
     """
     
     def __init__(

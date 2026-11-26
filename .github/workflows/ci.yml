@@ -1,0 +1,56 @@
+# Continuous integration for the DiDA repository.
+#
+# The repository had no automated workflow: nothing enforced the test
+# suite that `results.md` and `CONTRIBUTING.md` tell contributors to run.
+# This workflow runs that suite on every push and pull request, and it
+# also checks that the installed distribution metadata agrees with the
+# version the package reports at runtime.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test on Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.11"]
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # The CPU index keeps the download small; the suite never needs
+          # a GPU.
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu torch
+          python -m pip install pytest
+          python -m pip install -e .
+
+      - name: Check the installed version against dida.__version__
+        run: |
+          python -c "
+          import importlib.metadata as metadata
+          import dida
+          installed = metadata.version('dida')
+          assert installed == dida.__version__, (
+              'installed version %s != dida.__version__ %s' % (installed, dida.__version__)
+          )
+          print('version', installed)
+          "
+
+      - name: Run the test suite
+        run: python -m pytest -q

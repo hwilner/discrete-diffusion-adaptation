@@ -18,7 +18,7 @@ This implementation is designed for researchers, students, and engineers who wan
 - **Complete Sampling Pipeline:** Includes a high-level sampler for both pure image generation and interleaved text-to-image generation.
 - **CTMC Uniformization Sampling:** Exact continuous-time Markov chain trajectories via uniformization, compressing dozens of discrete re-sampling steps into a Poisson number of jump evaluations.
 - **Log-Space Gumbel-Softmax:** Underflow-safe reparameterization for large-vocabulary token distributions.
-- **Comprehensive Test Suite:** Includes **30 unit and integration tests** to ensure the correctness of the implementation. All tests pass successfully.
+- **Comprehensive Test Suite:** Includes **133 unit and integration tests** to ensure the correctness of the implementation. All tests pass successfully.
 - **Detailed Documentation:** In-depth explanations of the architecture, testing methodology, and usage.
 - **Working Examples:** Clear examples demonstrating how to use the DiDA implementation for various tasks.
 

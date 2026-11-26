@@ -16,11 +16,18 @@ on:
 jobs:
   test:
     name: Test on Python ${{ matrix.python-version }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.11"]
+        include:
+          # Python 3.9 has no build for the current ubuntu-latest image, so
+          # the oldest version the package still supports is tested on the
+          # last image that provides one.
+          - python-version: "3.9"
+            os: ubuntu-24.04
+          - python-version: "3.11"
+            os: ubuntu-latest
 
     steps:
       - name: Check out the repository

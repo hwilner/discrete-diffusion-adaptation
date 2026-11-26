@@ -37,7 +37,7 @@ COUNT_CLAIMS = (
     ("README.md", r"\*\*(\d+) unit and integration tests\*\*"),
     ("CONTRIBUTING.md", r"all (\d+) tests should pass"),
     ("docs/TESTING.md", r"All (\d+) tests should pass"),
-    ("results.md", r"\| Tests passed \| \*\*(\d+)\*\* \|"),
+    ("results.md", r"\| Tests collected \| \*\*(\d+)\*\* \|"),
 )
 
 
